@@ -5,6 +5,13 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from routing.constants import (
+    OPEN_METEO_BASE_URL as DEFAULT_OPEN_METEO_BASE_URL,
+    OPEN_METEO_GEOCODE_URL as DEFAULT_OPEN_METEO_GEOCODE_URL,
+    OPENROUTESERVICE_BASE_URL as DEFAULT_OPENROUTESERVICE_BASE_URL,
+    OSRM_BASE_URL as DEFAULT_OSRM_BASE_URL,
+)
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 load_dotenv(BASE_DIR / ".env")
@@ -109,10 +116,15 @@ REST_FRAMEWORK = {
 
 OPENROUTESERVICE_BASE_URL = os.environ.get(
     "OPENROUTESERVICE_BASE_URL",
-    "https://api.heigit.org",
+    DEFAULT_OPENROUTESERVICE_BASE_URL,
 ).rstrip("/")
 OPENROUTESERVICE_API_KEY = os.environ.get("OPENROUTESERVICE_API_KEY", "")
 OPEN_METEO_BASE_URL = os.environ.get(
     "OPEN_METEO_BASE_URL",
-    "https://api.open-meteo.com",
+    DEFAULT_OPEN_METEO_BASE_URL,
 ).rstrip("/")
+OPEN_METEO_GEOCODE_URL = os.environ.get(
+    "OPEN_METEO_GEOCODE_URL",
+    DEFAULT_OPEN_METEO_GEOCODE_URL,
+).rstrip("/")
+OSRM_BASE_URL = os.environ.get("OSRM_BASE_URL", DEFAULT_OSRM_BASE_URL).rstrip("/")
