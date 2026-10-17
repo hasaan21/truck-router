@@ -2,6 +2,23 @@
   box-sizing: border-box;
 }
 
+:root {
+  --bg: #10151b;
+  --panel: #141b22;
+  --surface: #10171e;
+  --line: #2c3946;
+  --text: #e8eef5;
+  --muted: #c5d2de;
+  --faint: #9aabbc;
+  --accent: #e2a122;
+  --accent-ink: #1c1404;
+  --radius: 8px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  color-scheme: dark;
+}
+
 html,
 body,
 #root {
@@ -10,8 +27,8 @@ body,
 }
 
 body {
-  background: #10151b;
-  color: #e8eef5;
+  background: var(--bg);
+  color: var(--text);
   font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
 }
 
@@ -32,18 +49,21 @@ select {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  background: #141b22;
-  border-right: 1px solid #2c3946;
+  background: var(--panel);
+  border-right: 1px solid var(--line);
 }
 
 .panel-body {
+  display: flex;
+  flex-direction: column;
   overflow: auto;
-  padding: 22px 18px 8px;
+  padding: 12px var(--space-4) 0;
   flex: 1;
+  min-height: 0;
 }
 
 .mast h1 {
-  margin: 2px 0 8px;
+  margin: 0 0 4px;
   font-size: 1.7rem;
   letter-spacing: -0.03em;
 }
@@ -52,13 +72,18 @@ select {
 .empty,
 .note,
 .credits {
-  color: #9aabbc;
+  color: var(--faint);
   line-height: 1.45;
+}
+
+.mast p {
+  margin: 0;
+  font-size: 0.92rem;
 }
 
 .kicker {
   margin: 0;
-  color: #e2a122;
+  color: var(--accent);
   font-family: "IBM Plex Mono", ui-monospace, monospace;
   font-size: 0.78rem;
   letter-spacing: 0.08em;
@@ -67,8 +92,9 @@ select {
 
 .trip-form {
   display: grid;
-  gap: 12px;
-  margin: 18px 0;
+  gap: var(--space-2);
+  margin: var(--space-2) 0 0;
+  flex-shrink: 0;
 }
 
 .field {
@@ -79,7 +105,7 @@ select {
 
 .field span {
   font-size: 0.82rem;
-  color: #c5d2de;
+  color: var(--muted);
 }
 
 .field small {
@@ -91,8 +117,9 @@ select {
   width: 100%;
   border: 1px solid #334454;
   background: #0e141a;
-  border-radius: 8px;
-  padding: 10px 12px;
+  border-radius: var(--radius);
+  padding: 10px var(--space-3);
+  min-height: 44px;
 }
 
 .field input:focus,
@@ -114,13 +141,18 @@ select {
 .primary,
 .ghost {
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--radius);
   cursor: pointer;
+  min-height: 44px;
 }
 
 .primary {
-  background: #e2a122;
-  color: #1c1404;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  background: var(--accent);
+  color: var(--accent-ink);
   font-weight: 600;
   padding: 11px 14px;
 }
@@ -132,7 +164,33 @@ select {
 
 .ghost {
   background: #243140;
-  padding: 8px 12px;
+  padding: 8px var(--space-3);
+}
+
+.spinner {
+  width: 0.9rem;
+  height: 0.9rem;
+  border: 2px solid rgba(28, 20, 4, 0.25);
+  border-top-color: var(--accent-ink);
+  border-radius: 999px;
+  animation: spin 0.7s linear infinite;
+}
+
+.status {
+  min-height: 1.2rem;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.status:empty {
+  display: none;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .suggestions {
@@ -157,7 +215,12 @@ select {
   background: transparent;
   border: 0;
   border-radius: 6px;
-  padding: 8px;
+  padding: 10px var(--space-2);
+  min-height: 44px;
+}
+
+.suggestion-status:empty {
+  display: none;
 }
 
 .suggestions button.active,
@@ -181,8 +244,13 @@ select {
   margin-top: 8px;
 }
 
+.results-scroll {
+  flex: none;
+  padding-bottom: var(--space-3);
+}
+
 .results-head h2 {
-  margin: 18px 0 4px;
+  margin: var(--space-2) 0 4px;
   font-size: 1rem;
 }
 
@@ -202,16 +270,16 @@ select {
 .route-card {
   width: 100%;
   text-align: left;
-  background: #10171e;
-  border: 1px solid #2c3946;
+  background: var(--surface);
+  border: 1px solid var(--line);
   border-radius: 10px;
-  padding: 12px;
+  padding: var(--space-3);
   cursor: pointer;
 }
 
 .route-card.selected {
-  border-color: #e2a122;
-  box-shadow: inset 3px 0 0 #e2a122;
+  border-color: var(--accent);
+  box-shadow: inset 3px 0 0 var(--accent);
 }
 
 .route-title {
@@ -227,16 +295,17 @@ select {
   place-items: center;
   border-radius: 999px;
   background: #243140;
+  color: #ffffff;
   font-family: "IBM Plex Mono", ui-monospace, monospace;
 }
 
 .route-title em {
   margin-left: auto;
   font-style: normal;
-  color: #1c1404;
-  background: #e2a122;
+  color: var(--accent-ink);
+  background: var(--accent);
   border-radius: 999px;
-  padding: 2px 8px;
+  padding: 2px var(--space-2);
   font-size: 0.75rem;
 }
 
@@ -253,7 +322,7 @@ select {
 }
 
 .mile-row dt {
-  color: #8ea0b3;
+  color: var(--muted);
   font-size: 0.75rem;
 }
 
@@ -268,8 +337,10 @@ select {
 .risk-no_travel { color: #d7a4ef; }
 
 .slider {
-  border-top: 1px solid #2c3946;
-  padding: 12px 18px;
+  flex-shrink: 0;
+  border-top: 1px solid var(--line);
+  padding: var(--space-3) var(--space-4) var(--space-2);
+  background: var(--panel);
 }
 
 .slider-top,
@@ -281,18 +352,19 @@ select {
 }
 
 .slider-top {
-  margin-bottom: 8px;
-  color: #c5d2de;
+  margin-bottom: var(--space-2);
+  color: var(--muted);
   font-size: 0.85rem;
 }
 
 .slider-top strong {
-  color: #e8eef5;
+  color: var(--text);
 }
 
 .slider input[type="range"] {
   flex: 1;
-  accent-color: #e2a122;
+  accent-color: var(--accent);
+  min-height: 44px;
 }
 
 .hour-chip {
@@ -302,6 +374,7 @@ select {
 }
 
 .credits {
+  flex-shrink: 0;
   margin: 0;
   padding: 0 18px 14px;
   font-size: 0.75rem;
@@ -316,6 +389,17 @@ select {
 .map {
   position: absolute;
   inset: 0;
+}
+
+.map-status {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  background: rgba(16, 21, 27, 0.45);
+  color: var(--text);
+  font-weight: 600;
 }
 
 .legend {
@@ -336,6 +420,12 @@ select {
   display: flex;
   align-items: center;
   gap: 5px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation: none;
+  }
 }
 
 .legend i {
@@ -394,21 +484,33 @@ select {
 
 @media (max-width: 860px) {
   .shell {
-    display: block;
+    display: flex;
+    flex-direction: column;
     height: auto;
     min-height: 100%;
   }
 
   .map-wrap {
-    height: 62vh;
+    order: -1;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    height: 46vh;
   }
 
   .panel {
     border-right: 0;
-    border-top: 1px solid #2c3946;
+    border-top: 1px solid var(--line);
+  }
+
+  .panel-body,
+  .results-scroll {
+    overflow: visible;
   }
 
   .legend {
+    top: 12px;
+    bottom: auto;
     flex-wrap: wrap;
     border-radius: 12px;
     max-width: calc(100% - 24px);

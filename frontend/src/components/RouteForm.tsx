@@ -69,9 +69,13 @@ export function RouteForm({
           </select>
         </label>
       </div>
-      <button className="primary" type="submit" disabled={loading}>
-        {loading ? "Planning routes…" : "Plan routes"}
+      <button className="primary" type="submit" disabled={loading} aria-busy={loading}>
+        {loading ? <span className="spinner" aria-hidden="true" /> : null}
+        Plan routes
       </button>
+      <p className="status" role="status" aria-live="polite">
+        {loading ? "Planning routes. This can take a few seconds." : ""}
+      </p>
     </form>
   )
 }

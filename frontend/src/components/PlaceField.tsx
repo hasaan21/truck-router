@@ -2,6 +2,18 @@ import { useEffect, useId, useState } from "react"
 import { searchPlaces } from "../api"
 import type { Place } from "../types"
 
+function uniquePlaces(places: Place[]): Place[] {
+  const seen = new Set<string>()
+  return places.filter((place) => {
+    const key = `${place.label}\0${place.lat}\0${place.lon}`
+    if (seen.has(key)) {
+      return false
+    }
+    seen.add(key)
+    return true
+  })
+}
+
 interface PlaceFieldProps {
   label: string
   value: Place | null
@@ -38,7 +50,7 @@ export function PlaceField({ label, value, onChange }: PlaceFieldProps) {
       try {
         setBusy(true)
         const places = await searchPlaces(query, controller.signal)
-        setOptions(places)
+        setOptions(uniquePlaces(places))
         setHighlight(0)
         setOpen(true)
         setError(null)
@@ -81,6 +93,7 @@ export function PlaceField({ label, value, onChange }: PlaceFieldProps) {
         aria-expanded={open}
         aria-controls={listId}
         aria-autocomplete="list"
+        aria-activedescendant={open && options[highlight] ? `${listId}-opt-${highlight}` : undefined}
         placeholder="City or address"
         onChange={(event) => {
           const next = event.target.value
@@ -114,15 +127,16 @@ export function PlaceField({ label, value, onChange }: PlaceFieldProps) {
         }}
       />
       {open && (busy || error || options.length > 0 || text.trim().length >= 2) ? (
-        <ul id={listId} className="suggestions" role="listbox">
-          {!error && (busy || !settled) ? <li className="suggestion-status">Searching…</li> : null}
-          {error ? <li className="suggestion-status">{error}</li> : null}
-          {settled && !busy && !error && options.length === 0 ? (
-            <li className="suggestion-status">No matching places.</li>
-          ) : null}
+        <ul id={listId} className="suggestions" role="listbox" aria-label={label}>
+          <li className="suggestion-status" aria-live="polite">
+            {!error && (busy || !settled) ? "Searching…" : null}
+            {error}
+            {settled && !busy && !error && options.length === 0 ? "No matching places." : null}
+          </li>
           {options.map((place, index) => (
-            <li key={`${place.label}-${place.lat}-${place.lon}`}>
+            <li key={`${listId}-opt-${index}`}>
               <button
+                id={`${listId}-opt-${index}`}
                 type="button"
                 role="option"
                 aria-selected={index === highlight}

@@ -8,22 +8,23 @@ import {
 } from "maplibre-gl"
 import { useEffect, useRef } from "react"
 import "maplibre-gl/dist/maplibre-gl.css"
+import { MAP_STYLE_URL } from "../constants"
+import { formatWhen } from "../format"
 import { riskSegments } from "../geo"
 import { RISK_COLORS, RISK_LABELS, ROUTE_COLORS, SCORE_TO_RISK } from "../risk"
 import type { Checkpoint, HeatPoint, PlanResponse, RiskName } from "../types"
-import { formatWhen } from "../format"
 
-const MAP_STYLE = "https://tiles.openfreemap.org/styles/liberty"
 const EMPTY = { type: "FeatureCollection" as const, features: [] }
 
 interface MapViewProps {
   plan: PlanResponse | null
   selectedId: string | null
   hour: number
+  loading: boolean
   onSelect: (routeId: string) => void
 }
 
-export function MapView({ plan, selectedId, hour, onSelect }: MapViewProps) {
+export function MapView({ plan, selectedId, hour, loading, onSelect }: MapViewProps) {
   const container = useRef<HTMLDivElement>(null)
   const mapRef = useRef<Map | null>(null)
   const popupRef = useRef<Popup | null>(null)
@@ -39,12 +40,15 @@ export function MapView({ plan, selectedId, hour, onSelect }: MapViewProps) {
     }
     const map = new Map({
       container: container.current,
-      style: MAP_STYLE,
+      style: MAP_STYLE_URL,
       center: [-98.35, 39.5],
       zoom: 3.5,
     })
     map.addControl(new NavigationControl({ showCompass: false }), "top-right")
-    map.on("load", () => {
+    const installOverlays = () => {
+      if (map.getSource("routes")) {
+        return
+      }
       map.addSource("heat", { type: "geojson", data: EMPTY })
       map.addSource("casing", { type: "geojson", data: EMPTY })
       map.addSource("routes", { type: "geojson", data: EMPTY })
@@ -54,10 +58,10 @@ export function MapView({ plan, selectedId, hour, onSelect }: MapViewProps) {
         type: "circle",
         source: "heat",
         paint: {
-          "circle-radius": ["interpolate", ["linear"], ["zoom"], 3, 12, 7, 22, 11, 40],
+          "circle-radius": ["interpolate", ["linear"], ["zoom"], 3, 4, 6, 10, 10, 22],
           "circle-color": riskPaint(),
-          "circle-opacity": 0.62,
-          "circle-blur": 0.45,
+          "circle-opacity": 0.35,
+          "circle-blur": 0.7,
         },
       })
       map.addLayer({
@@ -86,17 +90,22 @@ export function MapView({ plan, selectedId, hour, onSelect }: MapViewProps) {
         type: "circle",
         source: "checkpoints",
         paint: {
-          "circle-radius": ["case", ["==", ["get", "selected"], 1], 6.5, 4.5],
+          "circle-radius": ["interpolate", ["linear"], ["zoom"], 3, 3, 6, 3.5, 8, 5, 12, 7],
           "circle-color": riskPaint(),
           "circle-stroke-color": "#ffffff",
-          "circle-stroke-width": 1.6,
+          "circle-stroke-width": ["interpolate", ["linear"], ["zoom"], 3, 1, 8, 1.6],
         },
       })
       readyRef.current = true
       map.resize()
-      paintRoutes(map, planRef.current, planRef.current?.recommended_route_id ?? null)
-      paintHeat(map, planRef.current, 0)
-    })
+      const current = planRef.current
+      paintRoutes(map, current, current?.recommended_route_id ?? null)
+      paintHeat(map, current, 0)
+      fitPlan(map, current)
+    }
+    // Road tiles can stay pending forever. Draw as soon as the style document is ready.
+    map.on("style.load", installOverlays)
+    mapRef.current = map
     map.on("click", "checkpoints", (event) => {
       const feature = event.features?.[0]
       const routeId = stringProperty(feature, "routeId")
@@ -121,7 +130,6 @@ export function MapView({ plan, selectedId, hour, onSelect }: MapViewProps) {
     })
     const observer = new ResizeObserver(() => map.resize())
     observer.observe(container.current)
-    mapRef.current = map
     return () => {
       observer.disconnect()
       popupRef.current?.remove()
@@ -137,18 +145,7 @@ export function MapView({ plan, selectedId, hour, onSelect }: MapViewProps) {
       return
     }
     paintRoutes(map, plan, selectedId)
-    if (!plan) {
-      return
-    }
-    const bounds = new LngLatBounds()
-    for (const route of plan.routes) {
-      for (const coordinate of route.geometry.coordinates) {
-        bounds.extend(coordinate)
-      }
-    }
-    if (!bounds.isEmpty()) {
-      map.fitBounds(bounds, { padding: 56, duration: 800, maxZoom: 8 })
-    }
+    fitPlan(map, plan)
   }, [plan])
 
   useEffect(() => {
@@ -170,6 +167,11 @@ export function MapView({ plan, selectedId, hour, onSelect }: MapViewProps) {
   return (
     <div className="map-wrap">
       <div ref={container} className="map" />
+      {loading ? (
+        <div className="map-status" role="status">
+          Updating routes…
+        </div>
+      ) : null}
       <ul className="legend">
         {(Object.keys(RISK_COLORS) as RiskName[]).map((risk) => (
           <li key={risk}>
@@ -180,6 +182,25 @@ export function MapView({ plan, selectedId, hour, onSelect }: MapViewProps) {
       </ul>
     </div>
   )
+}
+
+function fitPlan(map: Map, plan: PlanResponse | null) {
+  if (!plan) {
+    return
+  }
+  const bounds = new LngLatBounds()
+  for (const route of plan.routes) {
+    for (const coordinate of route.geometry.coordinates) {
+      const longitude = coordinate[0]
+      const latitude = coordinate[1]
+      if (Number.isFinite(longitude) && Number.isFinite(latitude)) {
+        bounds.extend([longitude, latitude])
+      }
+    }
+  }
+  if (!bounds.isEmpty()) {
+    map.fitBounds(bounds, { padding: 56, duration: 800, maxZoom: 9 })
+  }
 }
 
 function paintRoutes(map: Map, plan: PlanResponse | null, selectedId: string | null) {

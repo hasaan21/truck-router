@@ -1,4 +1,4 @@
-import { averageRiskLabel, RISK_LABELS } from "../risk"
+import { averageRiskLabel, RISK_LABELS, ROUTE_COLORS } from "../risk"
 import type { PlanResponse, PlannedRoute } from "../types"
 import { formatDuration, formatMiles } from "../format"
 
@@ -24,12 +24,23 @@ export function RouteList({ plan, selectedId, onSelect }: RouteListProps) {
           Truck restrictions did not yield three distinct routes, so these options use the car network.
         </p>
       ) : null}
+      {plan.profile === "osrm" ? (
+        <p className="note">
+          OpenRouteService refused this API key, so these options use the public driving network.
+        </p>
+      ) : null}
+      {plan.profile === "osrm-limit" ? (
+        <p className="note">
+          This trip is longer than the free OpenRouteService limit, so these options use the public driving network.
+        </p>
+      ) : null}
       <ol className="route-list">
         {plan.routes.map((route, index) => (
           <li key={route.id}>
             <RouteCard
               route={route}
               letter={LETTERS[index] ?? String(index + 1)}
+              color={ROUTE_COLORS[index] ?? ROUTE_COLORS[0]}
               recommended={route.id === plan.recommended_route_id}
               selected={route.id === selectedId}
               onSelect={onSelect}
@@ -44,12 +55,14 @@ export function RouteList({ plan, selectedId, onSelect }: RouteListProps) {
 function RouteCard({
   route,
   letter,
+  color,
   recommended,
   selected,
   onSelect,
 }: {
   route: PlannedRoute
   letter: string
+  color: string
   recommended: boolean
   selected: boolean
   onSelect: (routeId: string) => void
@@ -63,7 +76,9 @@ function RouteCard({
       onClick={() => onSelect(route.id)}
     >
       <div className="route-title">
-        <span className="route-letter">{letter}</span>
+        <span className="route-letter" style={{ background: color }}>
+          {letter}
+        </span>
         <strong>{formatMiles(summary.distance_miles)}</strong>
         <span>{formatDuration(summary.duration_seconds)}</span>
         {recommended ? <em>Recommended</em> : null}

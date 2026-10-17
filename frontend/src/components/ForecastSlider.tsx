@@ -4,6 +4,7 @@ interface ForecastSliderProps {
   originTime: string
   hour: number
   playing: boolean
+  stepOnly: boolean
   onHour: (hour: number) => void
   onToggle: () => void
 }
@@ -12,6 +13,7 @@ export function ForecastSlider({
   originTime,
   hour,
   playing,
+  stepOnly,
   onHour,
   onToggle,
 }: ForecastSliderProps) {
@@ -22,8 +24,13 @@ export function ForecastSlider({
         <strong>{formatWhen(addHours(originTime, hour))}</strong>
       </div>
       <div className="slider-row">
-        <button type="button" className="ghost" onClick={onToggle}>
-          {playing ? "Pause" : "Play"}
+        <button
+          type="button"
+          className="ghost"
+          aria-pressed={stepOnly ? undefined : playing}
+          onClick={onToggle}
+        >
+          {stepOnly ? "Next hour" : playing ? "Pause" : "Play"}
         </button>
         <input
           type="range"

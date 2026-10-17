@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react"
+import { useEffect, useRef, useState, type FormEvent } from "react"
 import { planTrip } from "./api"
 import { ForecastSlider } from "./components/ForecastSlider"
 import { MapView } from "./components/MapView"
@@ -19,16 +19,32 @@ export default function App() {
   const [playing, setPlaying] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [stepOnly, setStepOnly] = useState(false)
+  const resultsRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    if (!playing) {
+    const media = window.matchMedia("(prefers-reduced-motion: reduce)")
+    const apply = () => setStepOnly(media.matches)
+    apply()
+    media.addEventListener("change", apply)
+    return () => media.removeEventListener("change", apply)
+  }, [])
+
+  useEffect(() => {
+    if (!playing || stepOnly) {
       return
     }
     const timer = window.setInterval(() => {
       setHour((current) => (current + 1) % 48)
     }, 800)
     return () => window.clearInterval(timer)
-  }, [playing])
+  }, [playing, stepOnly])
+
+  useEffect(() => {
+    if (plan) {
+      resultsRef.current?.scrollIntoView({ block: "nearest" })
+    }
+  }, [plan])
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault()
@@ -93,31 +109,40 @@ export default function App() {
               {error}
             </p>
           ) : null}
-          {plan ? (
-            <RouteList plan={plan} selectedId={selectedId} onSelect={setSelectedId} />
-          ) : (
-            <p className="empty">
-              Pick both ends of the trip. Checkpoints are scored for wind, rain, and snow at the estimated arrival, including the load limits.
-            </p>
-          )}
+          <div className="results-scroll" ref={resultsRef}>
+            {plan ? (
+              <RouteList plan={plan} selectedId={selectedId} onSelect={setSelectedId} />
+            ) : (
+              <p className="empty">
+                Pick both ends of the trip. Checkpoints are scored for wind, rain, and snow at the estimated arrival, including the load limits.
+              </p>
+            )}
+          </div>
         </div>
         {plan ? (
           <ForecastSlider
             originTime={plan.heatmap.origin_time}
             hour={hour}
             playing={playing}
+            stepOnly={stepOnly}
             onHour={(next) => {
               setPlaying(false)
               setHour(next)
             }}
-            onToggle={() => setPlaying((current) => !current)}
+            onToggle={() => {
+              if (stepOnly) {
+                setHour((current) => (current + 1) % 48)
+                return
+              }
+              setPlaying((current) => !current)
+            }}
           />
         ) : null}
         <p className="credits">
           Routes by OpenRouteService. Weather by Open-Meteo. Map data © OpenStreetMap.
         </p>
       </aside>
-      <MapView plan={plan} selectedId={selectedId} hour={hour} onSelect={setSelectedId} />
+      <MapView plan={plan} selectedId={selectedId} hour={hour} loading={loading} onSelect={setSelectedId} />
     </main>
   )
 }
