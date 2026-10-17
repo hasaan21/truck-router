@@ -46,7 +46,7 @@ export function RouteForm({
       </label>
       <div className="split">
         <label className="field">
-          <span>Load weight</span>
+          <span>Load (lb)</span>
           <input
             type="number"
             min={0}
@@ -56,7 +56,6 @@ export function RouteForm({
             onChange={(event) => onLoad(event.target.value)}
             required
           />
-          <small>pounds</small>
         </label>
         <label className="field">
           <span>Sample every</span>

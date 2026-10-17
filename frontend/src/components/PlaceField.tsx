@@ -14,6 +14,7 @@ export function PlaceField({ label, value, onChange }: PlaceFieldProps) {
   const [options, setOptions] = useState<Place[]>([])
   const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [settled, setSettled] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [highlight, setHighlight] = useState(0)
 
@@ -26,8 +27,12 @@ export function PlaceField({ label, value, onChange }: PlaceFieldProps) {
     if (query.length < 2 || query === value?.label) {
       setOptions([])
       setBusy(false)
+      setSettled(false)
+      setError(null)
       return
     }
+    setSettled(false)
+    setError(null)
     const controller = new AbortController()
     const timer = window.setTimeout(async () => {
       try {
@@ -37,6 +42,7 @@ export function PlaceField({ label, value, onChange }: PlaceFieldProps) {
         setHighlight(0)
         setOpen(true)
         setError(null)
+        setSettled(true)
       } catch (caught) {
         if (caught instanceof DOMException && caught.name === "AbortError") {
           return
@@ -44,6 +50,7 @@ export function PlaceField({ label, value, onChange }: PlaceFieldProps) {
         setOptions([])
         setError(caught instanceof Error ? caught.message : "Place search failed.")
         setOpen(true)
+        setSettled(true)
       } finally {
         setBusy(false)
       }
@@ -108,9 +115,9 @@ export function PlaceField({ label, value, onChange }: PlaceFieldProps) {
       />
       {open && (busy || error || options.length > 0 || text.trim().length >= 2) ? (
         <ul id={listId} className="suggestions" role="listbox">
-          {busy ? <li className="suggestion-status">Searching…</li> : null}
+          {!error && (busy || !settled) ? <li className="suggestion-status">Searching…</li> : null}
           {error ? <li className="suggestion-status">{error}</li> : null}
-          {!busy && !error && options.length === 0 ? (
+          {settled && !busy && !error && options.length === 0 ? (
             <li className="suggestion-status">No matching places.</li>
           ) : null}
           {options.map((place, index) => (

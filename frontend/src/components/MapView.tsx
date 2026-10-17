@@ -119,8 +119,11 @@ export function MapView({ plan, selectedId, hour, onSelect }: MapViewProps) {
     map.on("mouseleave", "checkpoints", () => {
       map.getCanvas().style.cursor = ""
     })
+    const observer = new ResizeObserver(() => map.resize())
+    observer.observe(container.current)
     mapRef.current = map
     return () => {
+      observer.disconnect()
       popupRef.current?.remove()
       readyRef.current = false
       map.remove()
