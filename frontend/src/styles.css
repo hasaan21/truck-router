@@ -4,9 +4,7 @@
 
 html,
 body,
-#root,
-.shell,
-.map {
+#root {
   height: 100%;
   margin: 0;
 }
@@ -15,4 +13,404 @@ body {
   background: #10151b;
   color: #e8eef5;
   font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+}
+
+button,
+input,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+.shell {
+  display: grid;
+  grid-template-columns: 400px minmax(0, 1fr);
+  height: 100%;
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: #141b22;
+  border-right: 1px solid #2c3946;
+}
+
+.panel-body {
+  overflow: auto;
+  padding: 22px 18px 8px;
+  flex: 1;
+}
+
+.mast h1 {
+  margin: 2px 0 8px;
+  font-size: 1.7rem;
+  letter-spacing: -0.03em;
+}
+
+.mast p,
+.empty,
+.note,
+.credits {
+  color: #9aabbc;
+  line-height: 1.45;
+}
+
+.kicker {
+  margin: 0;
+  color: #e2a122;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.trip-form {
+  display: grid;
+  gap: 12px;
+  margin: 18px 0;
+}
+
+.field {
+  display: grid;
+  gap: 6px;
+  position: relative;
+}
+
+.field span {
+  font-size: 0.82rem;
+  color: #c5d2de;
+}
+
+.field small {
+  color: #8ea0b3;
+}
+
+.field input,
+.field select {
+  width: 100%;
+  border: 1px solid #334454;
+  background: #0e141a;
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.field input:focus,
+.field select:focus,
+.primary:focus-visible,
+.ghost:focus-visible,
+.route-card:focus-visible,
+.suggestions button:focus-visible {
+  outline: 2px solid #e2a122;
+  outline-offset: 2px;
+}
+
+.split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.primary,
+.ghost {
+  border: 0;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.primary {
+  background: #e2a122;
+  color: #1c1404;
+  font-weight: 600;
+  padding: 11px 14px;
+}
+
+.primary:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
+.ghost {
+  background: #243140;
+  padding: 8px 12px;
+}
+
+.suggestions {
+  position: absolute;
+  z-index: 5;
+  top: calc(100% - 2px);
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  background: #0e141a;
+  border: 1px solid #3a4b5c;
+  border-radius: 8px;
+  box-shadow: 0 16px 32px rgba(0, 0, 0, 0.35);
+}
+
+.suggestions button,
+.suggestion-status {
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  padding: 8px;
+}
+
+.suggestions button.active,
+.suggestions button:hover {
+  background: #243140;
+}
+
+.suggestion-status {
+  color: #9aabbc;
+}
+
+.banner {
+  background: #3a1d22;
+  color: #ffd5d8;
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.empty,
+.note {
+  margin-top: 8px;
+}
+
+.results-head h2 {
+  margin: 18px 0 4px;
+  font-size: 1rem;
+}
+
+.results-head p {
+  margin: 0 0 10px;
+  color: #9aabbc;
+}
+
+.route-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.route-card {
+  width: 100%;
+  text-align: left;
+  background: #10171e;
+  border: 1px solid #2c3946;
+  border-radius: 10px;
+  padding: 12px;
+  cursor: pointer;
+}
+
+.route-card.selected {
+  border-color: #e2a122;
+  box-shadow: inset 3px 0 0 #e2a122;
+}
+
+.route-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.route-letter {
+  width: 1.6rem;
+  height: 1.6rem;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: #243140;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+}
+
+.route-title em {
+  margin-left: auto;
+  font-style: normal;
+  color: #1c1404;
+  background: #e2a122;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 0.75rem;
+}
+
+.average {
+  margin: 8px 0;
+  font-size: 0.92rem;
+}
+
+.mile-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin: 0;
+}
+
+.mile-row dt {
+  color: #8ea0b3;
+  font-size: 0.75rem;
+}
+
+.mile-row dd {
+  margin: 2px 0 0;
+}
+
+.risk-low { color: #7dcea0; }
+.risk-moderate { color: #f0c14d; }
+.risk-high { color: #f0a06a; }
+.risk-severe { color: #f09595; }
+.risk-no_travel { color: #d7a4ef; }
+
+.slider {
+  border-top: 1px solid #2c3946;
+  padding: 12px 18px;
+}
+
+.slider-top,
+.slider-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.slider-top {
+  margin-bottom: 8px;
+  color: #c5d2de;
+  font-size: 0.85rem;
+}
+
+.slider-top strong {
+  color: #e8eef5;
+}
+
+.slider input[type="range"] {
+  flex: 1;
+  accent-color: #e2a122;
+}
+
+.hour-chip {
+  min-width: 3rem;
+  text-align: right;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+}
+
+.credits {
+  margin: 0;
+  padding: 0 18px 14px;
+  font-size: 0.75rem;
+}
+
+.map-wrap {
+  position: relative;
+  min-width: 0;
+  min-height: 320px;
+}
+
+.map {
+  position: absolute;
+  inset: 0;
+}
+
+.legend {
+  position: absolute;
+  left: 12px;
+  bottom: 28px;
+  display: flex;
+  gap: 10px;
+  margin: 0;
+  padding: 8px 10px;
+  list-style: none;
+  background: rgba(16, 21, 27, 0.88);
+  border-radius: 999px;
+  font-size: 0.75rem;
+}
+
+.legend li {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.legend i {
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 999px;
+  display: block;
+}
+
+.popup-card {
+  font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+}
+
+.popup-title,
+.popup-risk {
+  margin: 0 0 6px;
+}
+
+.popup-card ul {
+  margin: 0;
+  padding-left: 16px;
+}
+
+.risk-popup .maplibregl-popup-content {
+  background: #172029;
+  color: #e8eef5;
+  border-radius: 10px;
+  padding: 12px 14px 12px 12px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
+}
+
+.risk-popup .maplibregl-popup-close-button {
+  color: #e8eef5;
+  font-size: 18px;
+}
+
+.risk-popup.maplibregl-popup-anchor-bottom .maplibregl-popup-tip,
+.risk-popup.maplibregl-popup-anchor-bottom-left .maplibregl-popup-tip,
+.risk-popup.maplibregl-popup-anchor-bottom-right .maplibregl-popup-tip {
+  border-top-color: #172029;
+}
+
+.risk-popup.maplibregl-popup-anchor-top .maplibregl-popup-tip,
+.risk-popup.maplibregl-popup-anchor-top-left .maplibregl-popup-tip,
+.risk-popup.maplibregl-popup-anchor-top-right .maplibregl-popup-tip {
+  border-bottom-color: #172029;
+}
+
+.risk-popup.maplibregl-popup-anchor-left .maplibregl-popup-tip {
+  border-right-color: #172029;
+}
+
+.risk-popup.maplibregl-popup-anchor-right .maplibregl-popup-tip {
+  border-left-color: #172029;
+}
+
+@media (max-width: 860px) {
+  .shell {
+    display: block;
+    height: auto;
+    min-height: 100%;
+  }
+
+  .map-wrap {
+    height: 62vh;
+  }
+
+  .panel {
+    border-right: 0;
+    border-top: 1px solid #2c3946;
+  }
+
+  .legend {
+    flex-wrap: wrap;
+    border-radius: 12px;
+    max-width: calc(100% - 24px);
+  }
 }
