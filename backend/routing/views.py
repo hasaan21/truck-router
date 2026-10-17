@@ -45,4 +45,6 @@ def _ors(http: httpx.Client) -> OrsClient:
         settings.OPENROUTESERVICE_BASE_URL,
         settings.OPENROUTESERVICE_API_KEY,
         http,
+        osrm_base_url=settings.OSRM_BASE_URL,
+        geocode_url=settings.OPEN_METEO_GEOCODE_URL,
     )

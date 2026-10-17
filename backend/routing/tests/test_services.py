@@ -115,7 +115,7 @@ def test_autocomplete_reads_pelias_features():
         assert method == "GET"
         assert url.endswith("/pelias/v1/autocomplete")
         assert kwargs["params"]["text"] == "den"
-        assert kwargs["headers"]["Authorization"] == "Bearer test-key"
+        assert kwargs["params"]["api_key"] == "test-key"
         return FakeResponse(
             200,
             {
@@ -130,6 +130,136 @@ def test_autocomplete_reads_pelias_features():
 
     places = OrsClient("https://api.heigit.org", "test-key", FakeHttp(responder)).autocomplete("den")
     assert places == [Place("Denver, Colorado, USA", 39.74, -104.99)]
+
+
+def test_autocomplete_drops_repeated_places():
+    def responder(_method, _url, _kwargs):
+        feature = {
+            "geometry": {"coordinates": [124.33333, 7.88333]},
+            "properties": {"label": "Tamparan, LS, Philippines"},
+        }
+        return FakeResponse(200, {"features": [feature, feature]})
+
+    places = OrsClient("https://api.heigit.org", "test-key", FakeHttp(responder)).autocomplete("tam")
+    assert places == [Place("Tamparan, LS, Philippines", 7.88333, 124.33333)]
+
+
+def test_disallowed_pelias_key_falls_back_to_open_meteo():
+    def responder(_method, url, kwargs):
+        if "pelias" in url:
+            return FakeResponse(403, {"error": "Access to this API has been disallowed"})
+        assert "geocoding-api.open-meteo.com" in url
+        assert kwargs["params"]["name"] == "Chicago"
+        return FakeResponse(
+            200,
+            {
+                "results": [
+                    {
+                        "name": "Chicago",
+                        "admin1": "Illinois",
+                        "country": "United States",
+                        "latitude": 41.85,
+                        "longitude": -87.65,
+                    }
+                ]
+            },
+        )
+
+    places = OrsClient("https://api.heigit.org", "test-key", FakeHttp(responder)).autocomplete("Chicago")
+    assert places == [Place("Chicago, Illinois, United States", 41.85, -87.65)]
+
+
+def test_api_key_padding_matches_the_playground():
+    client = OrsClient("https://api.heigit.org", "abc", FakeHttp(lambda *_args: None))
+    assert client.api_key == "abc="
+
+
+def test_long_trip_limit_falls_back_to_osrm():
+    def responder(_method, url, _kwargs):
+        if "openrouteservice" in url:
+            return FakeResponse(
+                400,
+                {
+                    "error": {
+                        "code": 2004,
+                        "message": "The approximated route distance must not be greater than 100000.0 meters.",
+                    }
+                },
+            )
+        return FakeResponse(
+            200,
+            {
+                "code": "Ok",
+                "routes": [
+                    {
+                        "distance": 500000,
+                        "duration": 18000,
+                        "geometry": {"coordinates": _line(-87.6, -104.9), "type": "LineString"},
+                    }
+                ],
+            },
+        )
+
+    profile, routes = OrsClient("https://api.heigit.org", "test-key", FakeHttp(responder)).choose_routes(
+        CHICAGO, DENVER
+    )
+    assert profile == "osrm-limit"
+    assert routes[0].distance_meters == 500000
+    def responder(method, url, _kwargs):
+        if "openrouteservice" in url:
+            return FakeResponse(403, {"error": "Access to this API has been disallowed"})
+        assert method == "GET"
+        assert "/route/v1/driving/" in url
+        return FakeResponse(
+            200,
+            {
+                "code": "Ok",
+                "routes": [
+                    {
+                        "distance": 1609,
+                        "duration": 120,
+                        "geometry": {"coordinates": _line(-87.6, -87.4), "type": "LineString"},
+                    },
+                    {
+                        "distance": 2000,
+                        "duration": 150,
+                        "geometry": {"coordinates": _line(-87.6, -87.3, 41.9), "type": "LineString"},
+                    },
+                ],
+            },
+        )
+
+    profile, routes = OrsClient("https://api.heigit.org", "test-key", FakeHttp(responder)).choose_routes(
+        CHICAGO, DENVER
+    )
+    assert profile == "osrm"
+    assert len(routes) == 2
+    assert routes[0].distance_meters == 1609
+
+
+def test_short_alternative_list_gains_a_side_route():
+    direct = _line(-87.6, -87.4)
+    other = _line(-87.6, -87.3, 41.9)
+    side = _line(-87.6, -87.2, 42.2)
+
+    def responder(_method, url, kwargs):
+        if "openrouteservice" in url:
+            coordinates = kwargs["json"]["coordinates"]
+            if len(coordinates) == 3:
+                assert "alternative_routes" not in kwargs["json"]
+                return FakeResponse(200, _collection([_feature(side, 120_000, 6000)]))
+            return FakeResponse(
+                200,
+                _collection([_feature(direct, 80_000, 4000), _feature(other, 90_000, 4500)]),
+            )
+        return FakeResponse(500, {})
+
+    profile, routes = OrsClient("https://api.heigit.org", "test-key", FakeHttp(responder)).choose_routes(
+        CHICAGO, DENVER
+    )
+    assert profile == "driving-hgv"
+    assert len(routes) == 3
+    assert routes[2].distance_meters == 120_000
 
 
 def test_weather_combines_rain_and_showers_in_local_time():

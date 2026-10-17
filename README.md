@@ -31,9 +31,13 @@ Routing and geocoding use the free HeiGIT OpenRouteService endpoint:
 ```bash
 OPENROUTESERVICE_BASE_URL=https://api.heigit.org
 OPENROUTESERVICE_API_KEY=
+OPEN_METEO_BASE_URL=https://api.open-meteo.com
+OPEN_METEO_GEOCODE_URL=https://geocoding-api.open-meteo.com/v1/search
+OSRM_BASE_URL=https://router.project-osrm.org
+VITE_MAP_STYLE_URL=https://tiles.openfreemap.org/styles/liberty
 ```
 
-Create a free Standard key at [account.heigit.org](https://account.heigit.org/info/plans). The key stays on the server. Weather comes from [Open-Meteo](https://open-meteo.com/) and does not need a key. The map uses the free [OpenFreeMap](https://openfreemap.org/) Liberty style.
+Create a free Standard key at [account.heigit.org](https://account.heigit.org/info/plans). The key stays on the server. Weather and the geocode fallback come from [Open-Meteo](https://open-meteo.com/) and do not need a key. Trips past the free OpenRouteService distance limit use the public OSRM service. The map uses the free [OpenFreeMap](https://openfreemap.org/) Liberty style. Defaults for every address live in `backend/routing/constants.py` and `frontend/src/constants.ts`.
 
 Directions prefer the `driving-hgv` profile and ask for two alternatives besides the primary route. If that profile returns fewer than three distinct routes, the API uses `driving-car` when it produces more options.
 

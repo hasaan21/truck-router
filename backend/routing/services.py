@@ -1,5 +1,6 @@
 """Geocoding, directions, weather, and the route plan they produce."""
 
+import math
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
@@ -7,18 +8,29 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import httpx
 
+from routing.constants import (
+    FORECAST_DAYS,
+    FORECAST_HOURS,
+    HEIGIT_ACCOUNT_URL,
+    METERS_PER_MILE,
+    MILES_PER_DEGREE,
+    OPEN_METEO_FORECAST_PATH,
+    OPEN_METEO_GEOCODE_URL,
+    ORS_AUTOCOMPLETE_PATH,
+    ORS_DIRECTIONS_PATH,
+    OSRM_BASE_URL,
+    OSRM_DRIVING_PATH,
+    SAMPLE_INTERVALS,
+    VIA_OFFSETS_MILES,
+    WEATHER_BATCH,
+)
 from routing.recommend import rank_routes, summarize_checkpoints
 from routing.risk import RISK_SCORE, RiskLevel, classify_checkpoint
 from routing.sampling import corridor_points, haversine_miles, sample_route
 
-METERS_PER_MILE = 1609.344
-FORECAST_DAYS = 7
-FORECAST_HOURS = 48
-WEATHER_BATCH = 50
-SAMPLE_INTERVALS = {10, 25, 50}
 MISSING_KEY = (
     "Add OPENROUTESERVICE_API_KEY to the server environment. "
-    "A free key is available from https://account.heigit.org."
+    f"A free key is available from {HEIGIT_ACCOUNT_URL}."
 )
 
 
@@ -81,10 +93,20 @@ class ScoredCheckpoint:
 
 
 class OrsClient:
-    def __init__(self, base_url: str, api_key: str, http: httpx.Client):
+    def __init__(
+        self,
+        base_url: str,
+        api_key: str,
+        http: httpx.Client,
+        *,
+        osrm_base_url: str = OSRM_BASE_URL,
+        geocode_url: str = OPEN_METEO_GEOCODE_URL,
+    ):
         self.base_url = base_url.rstrip("/")
-        self.api_key = api_key
+        self.api_key = _normalize_api_key(api_key)
         self.http = http
+        self.osrm_base_url = osrm_base_url.rstrip("/")
+        self.geocode_url = geocode_url.rstrip("/")
 
     def autocomplete(self, text: str) -> list[Place]:
         self._require_key()
@@ -92,60 +114,176 @@ class OrsClient:
             payload = _request(
                 self.http,
                 "GET",
-                f"{self.base_url}/pelias/v1/autocomplete",
+                f"{self.base_url}{ORS_AUTOCOMPLETE_PATH}",
                 service="geocode",
-                params={"text": text, "size": 6},
+                params={"text": text, "size": 6, "api_key": self.api_key},
                 headers=self._headers(),
             )
         except PlanningError as exc:
             if exc.status in {400, 404}:
                 return []
+            if exc.status in {401, 403}:
+                return self._open_meteo_places(text)
             raise
-        places: list[Place] = []
-        for feature in payload.get("features") or []:
-            coordinates = (feature.get("geometry") or {}).get("coordinates") or []
-            label = str((feature.get("properties") or {}).get("label") or "").strip()
-            if not label or len(coordinates) < 2:
-                continue
-            places.append(
-                Place(label=label, lon=float(coordinates[0]), lat=float(coordinates[1]))
-            )
-        return places
+        return _places_from_pelias(payload)
 
     def choose_routes(self, origin: Place, destination: Place) -> tuple[str, list[RawRoute]]:
-        """Prefer three truck routes, and use car alternatives when HGV is short."""
+        """Prefer three truck routes, and use car alternatives when HGV is short.
+
+        A disallowed HeiGIT key falls through to the public OSRM driving service.
+        """
         self._require_key()
+        limited = False
+        try:
+            return self._ors_routes(origin, destination)
+        except PlanningError as exc:
+            limited = _distance_limited(exc)
+            if exc.status not in {401, 403} and not limited:
+                raise
+        routes = self._osrm_routes(origin, destination)
+        if not routes:
+            raise PlanningError(
+                "OpenRouteService disallowed this API key, and no public driving route was found.",
+                502,
+            )
+        profile = "osrm-limit" if limited else "osrm"
+        return profile, self._complete_with_vias(origin, destination, routes, profile)
+
+    def _ors_routes(self, origin: Place, destination: Place) -> tuple[str, list[RawRoute]]:
         hgv = self._directions_or_empty("driving-hgv", origin, destination)
         if len(hgv) >= 3:
             return "driving-hgv", hgv[:3]
         car = self._directions_or_empty("driving-car", origin, destination)
-        if len(car) > len(hgv):
-            return "driving-car", car[:3]
-        if hgv:
-            return "driving-hgv", hgv
-        if car:
-            return "driving-car", car
-        raise PlanningError("No drivable route was found between those places.", 404)
+        if len(car) >= 3 or len(car) > len(hgv):
+            profile, routes = "driving-car", car
+        elif hgv:
+            profile, routes = "driving-hgv", hgv
+        elif car:
+            profile, routes = "driving-car", car
+        else:
+            raise PlanningError("No drivable route was found between those places.", 404)
+        return profile, self._complete_with_vias(origin, destination, routes, profile)
 
-    def directions(self, profile: str, origin: Place, destination: Place) -> list[RawRoute]:
+    def _open_meteo_places(self, text: str) -> list[Place]:
+        payload = _request(
+            self.http,
+            "GET",
+            self.geocode_url,
+            service="geocode",
+            params={"name": text, "count": 6, "language": "en"},
+        )
+        places: list[Place] = []
+        for item in payload.get("results") or []:
+            label = ", ".join(
+                part
+                for part in (item.get("name"), item.get("admin1"), item.get("country"))
+                if part
+            )
+            try:
+                lat = float(item["latitude"])
+                lon = float(item["longitude"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            if label:
+                places.append(Place(label=label, lat=lat, lon=lon))
+        return _unique_places(places)
+
+    def _complete_with_vias(
+        self,
+        origin: Place,
+        destination: Place,
+        routes: list[RawRoute],
+        profile: str,
+    ) -> list[RawRoute]:
+        """Add a road on each side of the corridor until three options exist."""
+        collected = list(routes)
+        if len(collected) >= 3:
+            return collected[:3]
+        for via in _side_vias(origin, destination):
+            collected = _unique_routes(collected + self._route_via(origin, destination, via, profile))
+            if len(collected) >= 3:
+                break
+        return collected[:3]
+
+    def _route_via(
+        self,
+        origin: Place,
+        destination: Place,
+        via: tuple[float, float],
+        profile: str,
+    ) -> list[RawRoute]:
+        try:
+            if profile.startswith("osrm"):
+                return self._osrm_routes(origin, destination, via=via)
+            return self.directions(profile, origin, destination, via=via)
+        except PlanningError:
+            return []
+
+    def _osrm_routes(
+        self,
+        origin: Place,
+        destination: Place,
+        via: tuple[float, float] | None = None,
+    ) -> list[RawRoute]:
+        points = [f"{origin.lon},{origin.lat}"]
+        if via is not None:
+            points.append(f"{via[0]},{via[1]}")
+        points.append(f"{destination.lon},{destination.lat}")
+        path = ";".join(points)
+        payload = _request(
+            self.http,
+            "GET",
+            f"{self.osrm_base_url}{OSRM_DRIVING_PATH.format(path=path)}",
+            service="routing",
+            params={
+                "overview": "full",
+                "geometries": "geojson",
+                "alternatives": "false" if via is not None else "2",
+                "steps": "false",
+            },
+        )
+        if payload.get("code") != "Ok":
+            return []
+        routes: list[RawRoute] = []
+        for route in payload.get("routes") or []:
+            coordinates = (route.get("geometry") or {}).get("coordinates") or []
+            if len(coordinates) < 2:
+                continue
+            routes.append(
+                RawRoute(
+                    coordinates=coordinates,
+                    distance_meters=float(route.get("distance") or 0),
+                    duration_seconds=float(route.get("duration") or 0),
+                )
+            )
+        return _unique_routes(routes)
+
+    def directions(
+        self,
+        profile: str,
+        origin: Place,
+        destination: Place,
+        via: tuple[float, float] | None = None,
+    ) -> list[RawRoute]:
+        coordinates = [[origin.lon, origin.lat]]
+        if via is not None:
+            coordinates.append([via[0], via[1]])
+        coordinates.append([destination.lon, destination.lat])
+        body: dict = {"coordinates": coordinates, "instructions": False}
+        if via is None:
+            body["alternative_routes"] = {
+                "target_count": 2,
+                "share_factor": 0.6,
+                "weight_factor": 1.4,
+            }
         payload = _request(
             self.http,
             "POST",
-            f"{self.base_url}/openrouteservice/v2/directions/{profile}/geojson",
+            f"{self.base_url}{ORS_DIRECTIONS_PATH.format(profile=profile)}",
             service="routing",
+            params={"api_key": self.api_key},
             headers=self._headers(),
-            json={
-                "coordinates": [
-                    [origin.lon, origin.lat],
-                    [destination.lon, destination.lat],
-                ],
-                "alternative_routes": {
-                    "target_count": 2,
-                    "share_factor": 0.6,
-                    "weight_factor": 1.4,
-                },
-                "instructions": False,
-            },
+            json=body,
         )
         routes: list[RawRoute] = []
         for feature in payload.get("features") or []:
@@ -171,6 +309,8 @@ class OrsClient:
         try:
             return self.directions(profile, origin, destination)
         except PlanningError as exc:
+            if _distance_limited(exc):
+                raise
             if exc.status in {400, 404}:
                 return []
             raise
@@ -180,10 +320,7 @@ class OrsClient:
             raise PlanningError(MISSING_KEY, 503)
 
     def _headers(self) -> dict[str, str]:
-        return {
-            "Authorization": f"Bearer {self.api_key}",
-            "Accept": "application/json, application/geo+json",
-        }
+        return {"Accept": "application/json, application/geo+json"}
 
 
 class WeatherClient:
@@ -198,7 +335,7 @@ class WeatherClient:
             payload = _request(
                 self.http,
                 "GET",
-                f"{self.base_url}/v1/forecast",
+                f"{self.base_url}{OPEN_METEO_FORECAST_PATH}",
                 service="weather",
                 params={
                     "latitude": ",".join(f"{lat:.5f}" for lat, _lon in batch),
@@ -322,7 +459,7 @@ def _request(http: httpx.Client, method: str, url: str, *, service: str, **kwarg
     except httpx.HTTPError as exc:
         raise PlanningError(f"{_service_label(service)} could not be reached.", 502) from exc
     if response.status_code in {401, 403}:
-        raise PlanningError("The OpenRouteService API key was rejected.", 502)
+        raise PlanningError("The OpenRouteService API key was rejected.", response.status_code)
     if response.status_code == 429:
         raise PlanningError(
             f"{_service_label(service)} rate limit was reached. Try again shortly.",
@@ -334,6 +471,9 @@ def _request(http: httpx.Client, method: str, url: str, *, service: str, **kwarg
             502,
         )
     if response.status_code >= 400:
+        upstream = _upstream_message(response)
+        if service == "routing" and response.status_code == 400 and upstream:
+            raise PlanningError(upstream, 400)
         message = {
             "routing": "No drivable route was found between those places.",
             "geocode": "Place search failed. Try a different name.",
@@ -387,6 +527,86 @@ def _hour_index(times: list[datetime], moment: datetime) -> int:
         else:
             hi = mid
     return max(0, lo - 1)
+
+
+def _normalize_api_key(api_key: str) -> str:
+    """Keep the base64 padding the HeiGIT playground sends with the key."""
+    key = api_key.strip().strip('"').strip("'")
+    if not key or key.endswith("="):
+        return key
+    return key + ("=" * ((4 - (len(key) % 4)) % 4))
+
+
+def _distance_limited(exc: PlanningError) -> bool:
+    text = exc.message.lower()
+    return exc.status == 400 and ("100000" in exc.message or "configuration limits" in text)
+
+
+def _upstream_message(response) -> str:
+    try:
+        payload = response.json()
+    except ValueError:
+        return ""
+    if not isinstance(payload, dict):
+        return ""
+    error = payload.get("error")
+    if isinstance(error, dict):
+        return str(error.get("message") or "")
+    if isinstance(error, str):
+        return error
+    return ""
+
+
+def _places_from_pelias(payload: dict) -> list[Place]:
+    places: list[Place] = []
+    for feature in payload.get("features") or []:
+        coordinates = (feature.get("geometry") or {}).get("coordinates") or []
+        label = str((feature.get("properties") or {}).get("label") or "").strip()
+        if not label or len(coordinates) < 2:
+            continue
+        places.append(Place(label=label, lon=float(coordinates[0]), lat=float(coordinates[1])))
+    return _unique_places(places)
+
+
+def _unique_places(places: list[Place]) -> list[Place]:
+    """Drop repeats that share a label and the same map point."""
+    seen: set[tuple[str, float, float]] = set()
+    unique: list[Place] = []
+    for place in places:
+        key = (place.label, round(place.lat, 5), round(place.lon, 5))
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(place)
+    return unique
+
+
+def _side_vias(origin: Place, destination: Place) -> list[tuple[float, float]]:
+    """Points left and right of the straight line, nearest offsets first."""
+    mid_lat = (origin.lat + destination.lat) / 2
+    mid_lon = (origin.lon + destination.lon) / 2
+    east = (destination.lon - origin.lon) * math.cos(math.radians(mid_lat)) * MILES_PER_DEGREE
+    north = (destination.lat - origin.lat) * MILES_PER_DEGREE
+    length = math.hypot(east, north)
+    if length < 1:
+        return []
+    unit_east, unit_north = -north / length, east / length
+    cosine = math.cos(math.radians(mid_lat)) or 1.0
+    points: list[tuple[float, float]] = []
+    seen: set[tuple[float, float]] = set()
+    for miles in VIA_OFFSETS_MILES:
+        offset = min(miles, max(4.0, length * 0.4))
+        for sign in (1.0, -1.0):
+            lat = mid_lat + (sign * offset * unit_north) / MILES_PER_DEGREE
+            lon = mid_lon + (sign * offset * unit_east) / (MILES_PER_DEGREE * cosine)
+            if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+                continue
+            key = (round(lon, 3), round(lat, 3))
+            if key in seen:
+                continue
+            seen.add(key)
+            points.append((lon, lat))
+    return points
 
 
 def _unique_routes(routes: list[RawRoute]) -> list[RawRoute]:
