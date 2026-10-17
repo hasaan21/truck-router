@@ -1,10 +1,14 @@
-"""Place weather checkpoints along a route geometry."""
+"""Place weather checkpoints and corridor samples along a route geometry."""
 
 import math
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 EARTH_RADIUS_MILES = 3958.7613
+CORRIDOR_INTERVAL_MILES = 15
+CORRIDOR_OFFSETS_MILES = (0, 10, -10, 20, -20)
+MAX_CORRIDOR_POINTS = 400
+_CORRIDOR_GRID_DEGREES = 0.05
 
 
 @dataclass(frozen=True)
@@ -106,3 +110,86 @@ def _point_at_mile(
         lat = coordinates[index][1] + ratio * (coordinates[index + 1][1] - coordinates[index][1])
         return lon, lat
     return coordinates[-1][0], coordinates[-1][1]
+
+
+def corridor_points(routes: list[list[list[float]]]) -> list[tuple[float, float]]:
+    """Sample each route and step sideways so the forecast covers the corridor.
+
+    Nearby samples collapse onto a coarse grid, and the result is capped so
+    the forecast stays one payload the map can recolor without another request.
+    """
+    found: dict[tuple[int, int], tuple[float, float]] = {}
+    anchor = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    for coordinates in routes:
+        if len(coordinates) < 2:
+            continue
+        samples = sample_route(coordinates, CORRIDOR_INTERVAL_MILES, anchor, 0)
+        for index, sample in enumerate(samples):
+            bearing = _bearing_at(samples, index)
+            for offset in CORRIDOR_OFFSETS_MILES:
+                if offset == 0:
+                    lat, lon = sample.lat, sample.lon
+                else:
+                    side = bearing + (90 if offset > 0 else -90)
+                    lat, lon = destination_point(sample.lat, sample.lon, side, abs(offset))
+                key = (
+                    round(lat / _CORRIDOR_GRID_DEGREES),
+                    round(lon / _CORRIDOR_GRID_DEGREES),
+                )
+                found.setdefault(key, (lat, lon))
+    points = list(found.values())
+    if len(points) <= MAX_CORRIDOR_POINTS:
+        return points
+    step = len(points) / MAX_CORRIDOR_POINTS
+    return [
+        points[min(len(points) - 1, int(index * step))]
+        for index in range(MAX_CORRIDOR_POINTS)
+    ]
+
+
+def destination_point(
+    lat: float,
+    lon: float,
+    bearing_deg: float,
+    miles: float,
+) -> tuple[float, float]:
+    if miles == 0:
+        return lat, lon
+    delta = miles / EARTH_RADIUS_MILES
+    theta = math.radians(bearing_deg)
+    phi1 = math.radians(lat)
+    lambda1 = math.radians(lon)
+    phi2 = math.asin(
+        math.sin(phi1) * math.cos(delta)
+        + math.cos(phi1) * math.sin(delta) * math.cos(theta)
+    )
+    lambda2 = lambda1 + math.atan2(
+        math.sin(theta) * math.sin(delta) * math.cos(phi1),
+        math.cos(delta) - math.sin(phi1) * math.sin(phi2),
+    )
+    lon2 = (math.degrees(lambda2) + 540) % 360 - 180
+    return math.degrees(phi2), lon2
+
+
+def initial_bearing(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    phi1 = math.radians(lat1)
+    phi2 = math.radians(lat2)
+    d_lambda = math.radians(lon2 - lon1)
+    x = math.sin(d_lambda) * math.cos(phi2)
+    y = (
+        math.cos(phi1) * math.sin(phi2)
+        - math.sin(phi1) * math.cos(phi2) * math.cos(d_lambda)
+    )
+    return (math.degrees(math.atan2(x, y)) + 360) % 360
+
+
+def _bearing_at(samples: list[CheckpointSample], index: int) -> float:
+    if index < len(samples) - 1:
+        current = samples[index]
+        nxt = samples[index + 1]
+        return initial_bearing(current.lat, current.lon, nxt.lat, nxt.lon)
+    if index > 0:
+        previous = samples[index - 1]
+        current = samples[index]
+        return initial_bearing(previous.lat, previous.lon, current.lat, current.lon)
+    return 0.0
