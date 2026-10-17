@@ -1,0 +1,27 @@
+[tool.poetry]
+name = "truck-router"
+version = "0.1.0"
+description = "Weather-aware truck routing API"
+authors = ["Truck Router"]
+package-mode = false
+
+[tool.poetry.dependencies]
+python = "^3.12"
+django = "^5.1"
+djangorestframework = "^3.15"
+django-cors-headers = "^4.6"
+httpx = "^0.28"
+python-dotenv = "^1.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.3"
+pytest-django = "^4.9"
+
+[build-system]
+requires = ["poetry-core>=2.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "config.settings"
+pythonpath = ["."]
+testpaths = ["routing/tests"]
