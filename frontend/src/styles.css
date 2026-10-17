@@ -1,0 +1,18 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root,
+.shell,
+.map {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: #10151b;
+  color: #e8eef5;
+  font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+}
