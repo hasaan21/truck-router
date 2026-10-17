@@ -3,6 +3,10 @@ import { defineConfig } from "vite"
 
 export default defineConfig({
   plugins: [react()],
+  envDir: "..",
+  optimizeDeps: {
+    exclude: ["maplibre-gl"],
+  },
   server: {
     port: 5173,
     proxy: {
