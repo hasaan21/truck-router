@@ -17,6 +17,7 @@ from routing.services import (
 
 CHICAGO = Place("Chicago, Illinois, USA", 41.88, -87.63)
 DENVER = Place("Denver, Colorado, USA", 39.74, -104.99)
+NEARBY = Place("Evanston, Illinois, USA", 42.05, -87.69)
 
 
 class FakeResponse:
@@ -73,7 +74,7 @@ def test_truck_profile_falls_back_to_car_when_alternatives_are_short():
         )
 
     profile, routes = OrsClient("https://api.heigit.org", "test-key", FakeHttp(responder)).choose_routes(
-        CHICAGO, DENVER
+        CHICAGO, NEARBY
     )
     assert profile == "driving-car"
     assert len(routes) == 3
@@ -92,7 +93,7 @@ def test_three_truck_routes_skip_the_car_fallback():
         return FakeResponse(200, _collection(features))
 
     profile, routes = OrsClient("https://api.heigit.org", "test-key", FakeHttp(responder)).choose_routes(
-        CHICAGO, DENVER
+        CHICAGO, NEARBY
     )
     assert profile == "driving-hgv"
     assert len(routes) == 3
@@ -130,6 +131,49 @@ def test_autocomplete_reads_pelias_features():
 
     places = OrsClient("https://api.heigit.org", "test-key", FakeHttp(responder)).autocomplete("den")
     assert places == [Place("Denver, Colorado, USA", 39.74, -104.99)]
+
+
+def test_repeated_place_search_uses_the_cache():
+    calls = []
+
+    def responder(method, url, kwargs):
+        calls.append(url)
+        assert method == "GET"
+        return FakeResponse(
+            200,
+            {
+                "features": [
+                    {
+                        "geometry": {"coordinates": [-104.99, 39.74]},
+                        "properties": {"label": "Denver, Colorado, USA"},
+                    }
+                ]
+            },
+        )
+
+    client = OrsClient("https://api.heigit.org", "test-key", FakeHttp(responder))
+    first = client.autocomplete("Denver")
+    second = client.autocomplete(" denver ")
+    assert second == first
+    assert len(calls) == 1
+
+
+def test_repeated_route_choice_uses_the_cache():
+    calls = []
+
+    def responder(_method, url, _kwargs):
+        calls.append(url)
+        features = [
+            _feature(_line(-87.7, -87.1, 41.8 + index / 10), 50_000, 3000)
+            for index in range(3)
+        ]
+        return FakeResponse(200, _collection(features))
+
+    client = OrsClient("https://api.heigit.org", "test-key", FakeHttp(responder))
+    first = client.choose_routes(CHICAGO, NEARBY)
+    second = client.choose_routes(CHICAGO, NEARBY)
+    assert second == first
+    assert len(calls) == 1
 
 
 def test_autocomplete_drops_repeated_places():
@@ -174,7 +218,38 @@ def test_api_key_padding_matches_the_playground():
     assert client.api_key == "abc="
 
 
-def test_long_trip_limit_falls_back_to_osrm():
+def test_long_trip_skips_openrouteservice():
+    calls = []
+
+    def responder(_method, url, _kwargs):
+        calls.append(url)
+        assert "openrouteservice" not in url
+        return FakeResponse(
+            200,
+            {
+                "code": "Ok",
+                "routes": [
+                    {
+                        "distance": 500000,
+                        "duration": 18000,
+                        "geometry": {"coordinates": _line(-87.6, -104.9), "type": "LineString"},
+                    }
+                ],
+            },
+        )
+
+    client = OrsClient("https://api.heigit.org", "test-key", FakeHttp(responder))
+    profile, routes = client.choose_routes(CHICAGO, DENVER)
+    assert profile == "osrm-limit"
+    assert routes[0].distance_meters == 500000
+    assert calls
+    assert all("openrouteservice" not in url for url in calls)
+    seen = len(calls)
+    client.choose_routes(CHICAGO, DENVER)
+    assert len(calls) == seen
+
+
+def test_short_trip_over_the_road_limit_falls_back_to_osrm():
     def responder(_method, url, _kwargs):
         if "openrouteservice" in url:
             return FakeResponse(
@@ -192,19 +267,22 @@ def test_long_trip_limit_falls_back_to_osrm():
                 "code": "Ok",
                 "routes": [
                     {
-                        "distance": 500000,
-                        "duration": 18000,
-                        "geometry": {"coordinates": _line(-87.6, -104.9), "type": "LineString"},
+                        "distance": 90000,
+                        "duration": 5000,
+                        "geometry": {"coordinates": _line(-87.6, -87.4), "type": "LineString"},
                     }
                 ],
             },
         )
 
     profile, routes = OrsClient("https://api.heigit.org", "test-key", FakeHttp(responder)).choose_routes(
-        CHICAGO, DENVER
+        CHICAGO, NEARBY
     )
     assert profile == "osrm-limit"
-    assert routes[0].distance_meters == 500000
+    assert routes[0].distance_meters == 90000
+
+
+def test_disallowed_key_falls_back_to_osrm():
     def responder(method, url, _kwargs):
         if "openrouteservice" in url:
             return FakeResponse(403, {"error": "Access to this API has been disallowed"})
@@ -230,7 +308,7 @@ def test_long_trip_limit_falls_back_to_osrm():
         )
 
     profile, routes = OrsClient("https://api.heigit.org", "test-key", FakeHttp(responder)).choose_routes(
-        CHICAGO, DENVER
+        CHICAGO, NEARBY
     )
     assert profile == "osrm"
     assert len(routes) == 2
@@ -255,7 +333,7 @@ def test_short_alternative_list_gains_a_side_route():
         return FakeResponse(500, {})
 
     profile, routes = OrsClient("https://api.heigit.org", "test-key", FakeHttp(responder)).choose_routes(
-        CHICAGO, DENVER
+        CHICAGO, NEARBY
     )
     assert profile == "driving-hgv"
     assert len(routes) == 3
@@ -289,6 +367,38 @@ def test_weather_combines_rain_and_showers_in_local_time():
     assert wind == 0
     assert rain == pytest.approx(0.1)
     assert snow == pytest.approx(1.5)
+
+
+def _forecast(wind: float):
+    return {
+        "utc_offset_seconds": 0,
+        "hourly": {
+            "time": ["2026-10-18T08:00", "2026-10-18T09:00"],
+            "wind_speed_10m": [wind, wind],
+            "rain": [0, 0],
+            "showers": [0, 0],
+            "snowfall": [0, 0],
+        },
+    }
+
+
+def test_repeated_weather_uses_the_cache_and_fetches_only_new_points():
+    calls = []
+
+    def responder(_method, _url, kwargs):
+        latitudes = kwargs["params"]["latitude"].split(",")
+        calls.append(latitudes)
+        if len(latitudes) == 1:
+            return FakeResponse(200, _forecast(10 if latitudes[0] == "41.80000" else 20))
+        return FakeResponse(200, [_forecast(10), _forecast(20)][: len(latitudes)])
+
+    client = WeatherClient("https://api.open-meteo.com", FakeHttp(responder))
+    first = client.hourly([(41.8, -87.6)])
+    second = client.hourly([(41.8, -87.6)])
+    assert second[0].wind_mph == first[0].wind_mph
+    both = client.hourly([(41.8, -87.6), (42.1, -87.7)])
+    assert [item.wind_mph[0] for item in both] == [10, 20]
+    assert calls == [["41.80000"], ["42.10000"]]
 
 
 def test_plan_recommends_the_calmer_route_and_precomputes_48_hours():

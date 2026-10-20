@@ -8,6 +8,16 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import httpx
 
+from routing.cache import (
+    GEOCODE_TTL,
+    ROUTE_TTL,
+    WEATHER_TTL,
+    geocode_cache_key,
+    recall,
+    remember,
+    route_cache_key,
+    weather_cache_key,
+)
 from routing.constants import (
     FORECAST_DAYS,
     FORECAST_HOURS,
@@ -18,6 +28,7 @@ from routing.constants import (
     OPEN_METEO_GEOCODE_URL,
     ORS_AUTOCOMPLETE_PATH,
     ORS_DIRECTIONS_PATH,
+    ORS_FREE_TIER_MAX_METERS,
     OSRM_BASE_URL,
     OSRM_DRIVING_PATH,
     SAMPLE_INTERVALS,
@@ -110,6 +121,15 @@ class OrsClient:
 
     def autocomplete(self, text: str) -> list[Place]:
         self._require_key()
+        key = geocode_cache_key(text)
+        cached = recall(key)
+        if cached is not None:
+            return cached
+        places = self._autocomplete(text)
+        remember(key, places, GEOCODE_TTL)
+        return places
+
+    def _autocomplete(self, text: str) -> list[Place]:
         try:
             payload = _request(
                 self.http,
@@ -130,9 +150,24 @@ class OrsClient:
     def choose_routes(self, origin: Place, destination: Place) -> tuple[str, list[RawRoute]]:
         """Prefer three truck routes, and use car alternatives when HGV is short.
 
-        A disallowed HeiGIT key falls through to the public OSRM driving service.
+        A disallowed HeiGIT key, or a trip the free tier cannot accept, falls
+        through to the public OSRM driving service.
         """
         self._require_key()
+        key = route_cache_key(origin, destination)
+        cached = recall(key)
+        if cached is not None:
+            return cached
+        result = self._choose_routes(origin, destination)
+        if result[1]:
+            remember(key, result, ROUTE_TTL)
+        return result
+
+    def _choose_routes(self, origin: Place, destination: Place) -> tuple[str, list[RawRoute]]:
+        straight_meters = haversine_miles(origin.lon, origin.lat, destination.lon, destination.lat)
+        straight_meters *= METERS_PER_MILE
+        if straight_meters > ORS_FREE_TIER_MAX_METERS:
+            return self._public_routes(origin, destination, limited=True)
         limited = False
         try:
             return self._ors_routes(origin, destination)
@@ -140,6 +175,15 @@ class OrsClient:
             limited = _distance_limited(exc)
             if exc.status not in {401, 403} and not limited:
                 raise
+        return self._public_routes(origin, destination, limited=limited)
+
+    def _public_routes(
+        self,
+        origin: Place,
+        destination: Place,
+        *,
+        limited: bool,
+    ) -> tuple[str, list[RawRoute]]:
         routes = self._osrm_routes(origin, destination)
         if not routes:
             raise PlanningError(
@@ -329,17 +373,29 @@ class WeatherClient:
         self.http = http
 
     def hourly(self, points: list[tuple[float, float]]) -> list[ForecastSeries]:
-        series: list[ForecastSeries] = []
-        for start in range(0, len(points), WEATHER_BATCH):
-            batch = points[start : start + WEATHER_BATCH]
+        series: list[ForecastSeries | None] = [None] * len(points)
+        missing: list[tuple[str, float, float]] = []
+        indexes: dict[str, list[int]] = {}
+        for index, (lat, lon) in enumerate(points):
+            key = weather_cache_key(lat, lon)
+            cached = recall(key)
+            if cached is not None:
+                series[index] = cached
+                continue
+            if key not in indexes:
+                missing.append((key, lat, lon))
+                indexes[key] = []
+            indexes[key].append(index)
+        for start in range(0, len(missing), WEATHER_BATCH):
+            batch = missing[start : start + WEATHER_BATCH]
             payload = _request(
                 self.http,
                 "GET",
                 f"{self.base_url}{OPEN_METEO_FORECAST_PATH}",
                 service="weather",
                 params={
-                    "latitude": ",".join(f"{lat:.5f}" for lat, _lon in batch),
-                    "longitude": ",".join(f"{lon:.5f}" for _lat, lon in batch),
+                    "latitude": ",".join(f"{lat:.5f}" for _key, lat, _lon in batch),
+                    "longitude": ",".join(f"{lon:.5f}" for _key, _lat, lon in batch),
                     "hourly": "wind_speed_10m,rain,showers,snowfall",
                     "wind_speed_unit": "mph",
                     "precipitation_unit": "inch",
@@ -350,8 +406,15 @@ class WeatherClient:
             items = payload if isinstance(payload, list) else [payload]
             if len(items) != len(batch):
                 raise PlanningError("Weather forecast did not cover every point.", 502)
-            series.extend(_parse_series(item) for item in items)
-        return series
+            for (key, _lat, _lon), item in zip(batch, items):
+                parsed = _parse_series(item)
+                remember(key, parsed, WEATHER_TTL)
+                for index in indexes[key]:
+                    series[index] = parsed
+        found = [item for item in series if item is not None]
+        if len(found) != len(points):
+            raise PlanningError("Weather forecast did not cover every point.", 502)
+        return found
 
 
 def build_plan(body: object, ors: OrsClient, weather: WeatherClient) -> dict:

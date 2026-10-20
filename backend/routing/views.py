@@ -5,6 +5,16 @@ from rest_framework.response import Response
 
 from routing.services import OrsClient, PlanningError, WeatherClient, build_plan
 
+_http: httpx.Client | None = None
+
+
+def _http_client() -> httpx.Client:
+    """Reuse one client so later calls keep the existing TLS connection."""
+    global _http
+    if _http is None:
+        _http = httpx.Client(timeout=30)
+    return _http
+
 
 @api_view(["GET"])
 def health(_request):
@@ -17,8 +27,7 @@ def geocode(request):
     if len(query) < 2:
         return Response([])
     try:
-        with httpx.Client(timeout=20) as http:
-            places = _ors(http).autocomplete(query)
+        places = _ors(_http_client()).autocomplete(query)
     except PlanningError as exc:
         return Response({"detail": exc.message}, status=exc.status)
     return Response(
@@ -29,12 +38,12 @@ def geocode(request):
 @api_view(["POST"])
 def plan(request):
     try:
-        with httpx.Client(timeout=30) as http:
-            payload = build_plan(
-                request.data,
-                _ors(http),
-                WeatherClient(settings.OPEN_METEO_BASE_URL, http),
-            )
+        http = _http_client()
+        payload = build_plan(
+            request.data,
+            _ors(http),
+            WeatherClient(settings.OPEN_METEO_BASE_URL, http),
+        )
     except PlanningError as exc:
         return Response({"detail": exc.message}, status=exc.status)
     return Response(payload)

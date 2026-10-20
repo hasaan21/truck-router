@@ -37,7 +37,7 @@ OSRM_BASE_URL=https://router.project-osrm.org
 VITE_MAP_STYLE_URL=https://tiles.openfreemap.org/styles/liberty
 ```
 
-Create a free Standard key at [account.heigit.org](https://account.heigit.org/info/plans). The key stays on the server. Weather and the geocode fallback come from [Open-Meteo](https://open-meteo.com/) and do not need a key. Trips past the free OpenRouteService distance limit use the public OSRM service. The map uses the free [OpenFreeMap](https://openfreemap.org/) Liberty style. Defaults for every address live in `backend/routing/constants.py` and `frontend/src/constants.ts`.
+Create a free Standard key at [account.heigit.org](https://account.heigit.org/info/plans). The key stays on the server. Weather and the geocode fallback come from [Open-Meteo](https://open-meteo.com/) and do not need a key. Trips past the free OpenRouteService distance limit use the public OSRM service. Repeat place searches and route plans are cached in process memory, and a trip whose straight-line distance exceeds 100 km uses the public driving service immediately. The map uses the free [OpenFreeMap](https://openfreemap.org/) Liberty style. Defaults for every address live in `backend/routing/constants.py` and `frontend/src/constants.ts`.
 
 Directions prefer the `driving-hgv` profile and ask for two alternatives besides the primary route. If that profile returns fewer than three distinct routes, the API uses `driving-car` when it produces more options.
 
