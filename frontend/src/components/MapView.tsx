@@ -54,17 +54,6 @@ export function MapView({ plan, selectedId, hour, loading, onSelect }: MapViewPr
       map.addSource("routes", { type: "geojson", data: EMPTY })
       map.addSource("checkpoints", { type: "geojson", data: EMPTY })
       map.addLayer({
-        id: "heat",
-        type: "circle",
-        source: "heat",
-        paint: {
-          "circle-radius": ["interpolate", ["linear"], ["zoom"], 3, 4, 6, 10, 10, 22],
-          "circle-color": riskPaint(),
-          "circle-opacity": 0.35,
-          "circle-blur": 0.7,
-        },
-      })
-      map.addLayer({
         id: "casing",
         type: "line",
         source: "casing",
@@ -85,6 +74,7 @@ export function MapView({ plan, selectedId, hour, loading, onSelect }: MapViewPr
           "line-width": ["case", ["==", ["get", "selected"], 1], 4.5, 2.5],
         },
       })
+      ensureHeatLayers(map)
       map.addLayer({
         id: "checkpoints",
         type: "circle",
@@ -244,7 +234,71 @@ function paintRoutes(map: Map, plan: PlanResponse | null, selectedId: string | n
   setGeoJson(map, "checkpoints", checkpoints)
 }
 
+const HEAT_LEVELS: RiskName[] = ["low", "moderate", "high", "severe", "no_travel"]
+
+function heatColor(risk: RiskName, alpha: number): string {
+  const hex = RISK_COLORS[risk].replace("#", "")
+  const red = Number.parseInt(hex.slice(0, 2), 16)
+  const green = Number.parseInt(hex.slice(2, 4), 16)
+  const blue = Number.parseInt(hex.slice(4, 6), 16)
+  return `rgba(${red}, ${green}, ${blue}, ${alpha})`
+}
+
+function heatPaint(risk: RiskName) {
+  const color = RISK_COLORS[risk]
+  return {
+    "heatmap-weight": 1,
+    "heatmap-intensity": ["interpolate", ["linear"], ["zoom"], 3, 0.45, 8, 0.85] as ExpressionSpecification,
+    "heatmap-radius": ["interpolate", ["linear"], ["zoom"], 3, 22, 6, 48, 10, 70] as ExpressionSpecification,
+    "heatmap-opacity": 0.62,
+    "heatmap-color": [
+      "interpolate",
+      ["linear"],
+      ["heatmap-density"],
+      0,
+      "rgba(0,0,0,0)",
+      0.2,
+      heatColor(risk, 0),
+      0.55,
+      heatColor(risk, 0.55),
+      1,
+      color,
+    ] as ExpressionSpecification,
+  }
+}
+
+function ensureHeatLayers(map: Map) {
+  const legacy = map.getLayer("heat")
+  if (legacy?.type === "circle") {
+    map.removeLayer("heat")
+  }
+  if (!map.getSource("heat") || !map.getLayer("casing")) {
+    return
+  }
+  for (const risk of HEAT_LEVELS) {
+    const id = `heat-${risk}`
+    const paint = heatPaint(risk)
+    if (map.getLayer(id)) {
+      map.setPaintProperty(id, "heatmap-intensity", paint["heatmap-intensity"])
+      map.setPaintProperty(id, "heatmap-radius", paint["heatmap-radius"])
+      map.setPaintProperty(id, "heatmap-opacity", paint["heatmap-opacity"])
+      continue
+    }
+    map.addLayer(
+      {
+        id,
+        type: "heatmap",
+        source: "heat",
+        filter: ["==", ["get", "risk"], risk],
+        paint,
+      },
+      "casing",
+    )
+  }
+}
+
 function paintHeat(map: Map, plan: PlanResponse | null, hour: number) {
+  ensureHeatLayers(map)
   const points = plan?.heatmap.points ?? []
   const features = points.map((point) => ({
     type: "Feature",

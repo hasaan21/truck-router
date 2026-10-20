@@ -125,6 +125,7 @@ export default function App() {
             hour={hour}
             playing={playing}
             stepOnly={stepOnly}
+            points={plan.heatmap.points}
             onHour={(next) => {
               setPlaying(false)
               setHour(next)

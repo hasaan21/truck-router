@@ -361,6 +361,34 @@ select {
   color: var(--text);
 }
 
+.hour-strip {
+  display: flex;
+  gap: 1px;
+  height: 8px;
+  margin-bottom: 6px;
+}
+
+.hour-strip button {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 8px;
+  padding: 0;
+  border: 0;
+  border-radius: 1px;
+  cursor: pointer;
+}
+
+.hour-strip button.active {
+  outline: 2px solid var(--text);
+  outline-offset: 1px;
+}
+
+.hour-summary {
+  margin: 0 0 4px;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
 .slider input[type="range"] {
   flex: 1;
   accent-color: var(--accent);
