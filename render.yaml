@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: truck-router
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/health/
+    envVars:
+      - key: DJANGO_DEBUG
+        value: "false"
+      - key: DJANGO_SECRET_KEY
+        generateValue: true
+      - key: OPENROUTESERVICE_BASE_URL
+        value: https://api.heigit.org
+      - key: OPEN_METEO_BASE_URL
+        value: https://api.open-meteo.com
+      - key: OPEN_METEO_GEOCODE_URL
+        value: https://geocoding-api.open-meteo.com/v1/search
+      - key: OSRM_BASE_URL
+        value: https://router.project-osrm.org
+      - key: OPENROUTESERVICE_API_KEY
+        sync: false
