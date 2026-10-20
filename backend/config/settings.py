@@ -148,3 +148,4 @@ OPEN_METEO_GEOCODE_URL = os.environ.get(
     DEFAULT_OPEN_METEO_GEOCODE_URL,
 ).rstrip("/")
 OSRM_BASE_URL = os.environ.get("OSRM_BASE_URL", DEFAULT_OSRM_BASE_URL).rstrip("/")
+OPEN_METEO_PROXY_TOKEN = os.environ.get("OPEN_METEO_PROXY_TOKEN", "")

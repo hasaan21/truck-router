@@ -42,7 +42,11 @@ def plan(request):
         payload = build_plan(
             request.data,
             _ors(http),
-            WeatherClient(settings.OPEN_METEO_BASE_URL, http),
+            WeatherClient(
+                settings.OPEN_METEO_BASE_URL,
+                http,
+                proxy_token=settings.OPEN_METEO_PROXY_TOKEN,
+            ),
         )
     except PlanningError as exc:
         return Response({"detail": exc.message}, status=exc.status)
@@ -56,4 +60,5 @@ def _ors(http: httpx.Client) -> OrsClient:
         http,
         osrm_base_url=settings.OSRM_BASE_URL,
         geocode_url=settings.OPEN_METEO_GEOCODE_URL,
+        proxy_token=settings.OPEN_METEO_PROXY_TOKEN,
     )

@@ -382,6 +382,20 @@ def _forecast(wind: float):
     }
 
 
+def test_weather_sends_the_proxy_token_when_one_is_configured():
+    seen = {}
+
+    def responder(_method, _url, kwargs):
+        seen["headers"] = kwargs["headers"]
+        return FakeResponse(200, _forecast(10))
+
+    WeatherClient("https://weather.example", FakeHttp(responder), proxy_token="secret").hourly(
+        [(41.8, -87.6)]
+    )
+    assert seen["headers"]["X-Weather-Token"] == "secret"
+    assert seen["headers"]["User-Agent"].startswith("Mozilla/5.0")
+
+
 def test_repeated_weather_uses_the_cache_and_fetches_only_new_points():
     calls = []
 

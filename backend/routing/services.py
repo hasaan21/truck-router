@@ -103,6 +103,16 @@ class ScoredCheckpoint:
     risk: RiskLevel
 
 
+def _proxy_headers(token: str) -> dict[str, str]:
+    if not token:
+        return {}
+    # workers.dev rejects the default Python client signature.
+    return {
+        "User-Agent": "Mozilla/5.0 (compatible; truck-router/1.0)",
+        "X-Weather-Token": token,
+    }
+
+
 class OrsClient:
     def __init__(
         self,
@@ -112,12 +122,14 @@ class OrsClient:
         *,
         osrm_base_url: str = OSRM_BASE_URL,
         geocode_url: str = OPEN_METEO_GEOCODE_URL,
+        proxy_token: str = "",
     ):
         self.base_url = base_url.rstrip("/")
         self.api_key = _normalize_api_key(api_key)
         self.http = http
         self.osrm_base_url = osrm_base_url.rstrip("/")
         self.geocode_url = geocode_url.rstrip("/")
+        self.proxy_token = proxy_token
 
     def autocomplete(self, text: str) -> list[Place]:
         self._require_key()
@@ -215,6 +227,7 @@ class OrsClient:
             self.geocode_url,
             service="geocode",
             params={"name": text, "count": 6, "language": "en"},
+            headers=_proxy_headers(self.proxy_token),
         )
         places: list[Place] = []
         for item in payload.get("results") or []:
@@ -368,9 +381,10 @@ class OrsClient:
 
 
 class WeatherClient:
-    def __init__(self, base_url: str, http: httpx.Client):
+    def __init__(self, base_url: str, http: httpx.Client, proxy_token: str = ""):
         self.base_url = base_url.rstrip("/")
         self.http = http
+        self.proxy_token = proxy_token
 
     def hourly(self, points: list[tuple[float, float]]) -> list[ForecastSeries]:
         series: list[ForecastSeries | None] = [None] * len(points)
@@ -402,6 +416,7 @@ class WeatherClient:
                     "forecast_days": FORECAST_DAYS,
                     "timezone": "auto",
                 },
+                headers=_proxy_headers(self.proxy_token),
             )
             items = payload if isinstance(payload, list) else [payload]
             if len(items) != len(batch):

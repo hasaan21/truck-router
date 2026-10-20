@@ -21,3 +21,5 @@ services:
         value: https://router.project-osrm.org
       - key: OPENROUTESERVICE_API_KEY
         sync: false
+      - key: OPEN_METEO_PROXY_TOKEN
+        sync: false
